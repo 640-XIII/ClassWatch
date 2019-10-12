@@ -3,102 +3,99 @@ from tkinter import *
 from _thread import *
 from tkinter import messagebox
 from time import sleep as s
-#from pyautogui import screenshot
 import socket
 
 Clients = list([])
-currentPingTime = float(0.1)
-disabledScreen = False
-sharingScreen = True
+currentPingTimeRaw = float(0.1)
+disableChatVar = False
 
 socketObject = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-socketObject.bind(("192.168.10.17", 8080))
+socketObject.bind(("192.168.10.6", 8080))
 
 
 def acceptingRequests():
     while True:
         try:
-            global currentPingTime
+            global currentPingTimeRaw, Clients
 
             socketObject.listen(1)
             client, addr = socketObject.accept()
 
-            print(addr)
+            currentPingTime = bytearray(pack("f", currentPingTimeRaw))
 
-            currentPingTime = bytearray(pack("f", currentPingTime))
             client.sendall(currentPingTime)
-            
+            connectedUserListbox.insert(END, addr[0])
+
+            currentPingTimeRaw += 0.05
             Clients.append(client)
         except:
             pass
 
 
 def receivingMessages():
-    global Clients
+    global Clients, disableChatVar
 
     while True:
         try:
-            for i in range(len(Clients)):
-                messageRaw = Clients[i].recv(1024)
-                message = messageRaw.decode("UTF-8")
+            if len(Clients) > 0 and disableChatVar == False:
+                for i in range(len(Clients)):
+                    message = Clients[i].recv(1024)
 
-                if message != "/ping":
-                    for i in range(len(Clients)):
-                        Clients[i].send(messageRaw)
+                    if message.decode("UTF-8")[0:5] != "/ping":
+                        for i in range(len(Clients)):
+                            Clients[i].sendall(message)
 
-                    messageHistory.config(state = NORMAL)
-                    messageHistory.insert(END, message)
-                    messageHistory.config(state = NORMAL)
-                else:
-                    pass
+                        message = message.decode("UTF-8")
+                        messageHistory.config(state = NORMAL)
+                        messageHistory.insert(END, message)
+                        messageHistory.config(state = DISABLED)
+                    else:
+                        pass
+            else:
+                s(0.1)
         except:
-            pass
-
-        s(0.05)
+            s(0.1)
 
 
 def sendHostMessage():
-    messageToSendRaw = str("Host: ")
-    messageToSendRaw += messageToSendTextbox.get("1.0", END)
-    messageToSend = messageToSendRaw.encode("UTF-8")
+    global Clients
 
-    messageHistory.config(state=NORMAL)
-    messageHistory.insert(END, messageToSend)
-    messageHistory.config(state=DISABLED)
+    if len(Clients) != 0:
+        messageToSendRaw = str("Host: ")
+        messageToSendRaw += messageToSendTextbox.get("1.0", END)
+        messageToSend = messageToSendRaw.encode("UTF-8")
 
-    if len(Clients) > 0:
+        messageHistory.config(state=NORMAL)
+        messageHistory.insert(END, messageToSend)
+        messageHistory.config(state=DISABLED)
+
         for i in range(len(Clients)):
             Clients[i].sendall(messageToSend)
     else:
         pass
-
-
-def disableScreen():
-    global Clients, disabledScreen
-    
-    for i in range(len(Clients)):
-        Clients[i].sendall(b"/disablescreen")
-
-    if disabledScreen == False:
-        disableScreenButton.config(text = "Enable Screen")
-    else:
-        disableScreenButton.config(text = "Disable Screen")
         
 
-def shareScreen():
-    fileNumber = int(0)
+def quitProgram():
+    global Clients
 
-    while sharingScreen == True:
-        screenshot(imageFilename = "image{}.jpg".format(fileNumber))
+    for i in range(len(Clients)):
+        Clients[i].sendall(b"/quit")
 
-        fileRaw = open("image{}.jpg".format(fileNumber))
-        fileData = bytes(fileRaw.read())
-        fileNumber += 1
+        connectedUserListbox.delete(END)
+        del Clients[i]
 
-        for i in range(len(Clients)):
-            socketObject.send(fileData)
 
-        s(0.5)
+def disableChat():
+    global disableChatVar
+
+    if disableChatVar == False:
+        disableChatButton.config(text = "Enable Chat")
+
+        disableChatVar = True
+    else:
+        disableChatButton.config(text = "Disable Chat")
+
+        disableChatVar = False
 
 
 def showInfo():
@@ -109,17 +106,25 @@ start_new_thread(acceptingRequests, ())
 start_new_thread(receivingMessages, ())
 
 mainWindow = Tk()
-mainWindow.geometry("600x500")
 mainWindow.title("Class Watch")
+
+mainWindow.geometry("630x500")
+mainWindow.resizable(False, False)
 
 messageHistory = Text(mainWindow, width = 50, height = 19, bg = "grey", state = DISABLED)
 messageHistory.place(in_ = mainWindow, x = 10, y = 10)
 
-infoButton = Button(mainWindow, width = 20, height = 2, text = "Info", command = showInfo, background = "#2d70ff", activebackground = "#598eff")
+infoButton = Button(mainWindow, width = 20, height = 2, text = "Info", command = showInfo)
 infoButton.place(in_ = mainWindow, x = 430, y = 10)
 
-disableScreenButton = Button(mainWindow, width = 20, height = 2, text = "Disable Screen", command = disableScreen, background = "#2d70ff", activebackground = "#598eff")
-disableScreenButton.place(in_ = mainWindow, x = 430, y = 60)
+quitProgramButton = Button(mainWindow, width = 20, height = 2, text = "Quit Program", command = quitProgram)
+quitProgramButton.place(in_ = mainWindow, x = 430, y = 60)
+
+disableChatButton = Button(mainWindow, width = 20, height = 2, text = "Disable Chat", command = disableChat)
+disableChatButton.place(in_ = mainWindow, x = 430, y = 110)
+
+connectedUserListbox = Listbox(mainWindow, width = 23, height = 10)
+connectedUserListbox.place(in_ = mainWindow, x = 430, y = 160)
 
 messageToSendTextbox = Text(mainWindow, width = 50, height = 8)
 messageToSendTextbox.place(in_ = mainWindow, x = 10, y = 350)
